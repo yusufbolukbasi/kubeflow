@@ -1,0 +1,5 @@
+FROM ubuntu/mlflow:2.1.1_1.0-22.04
+
+RUN mkdir -p /mlflow/artifact && mkdir -p /mlflow/storage
+
+CMD ["mlflow", "server", "--host", "0.0.0.0", "--default-artifact-root", "/mlflow/artifact", "--backend-store-uri", "/mlflow/backend_store"]

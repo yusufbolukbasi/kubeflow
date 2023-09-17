@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      name: grafana
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        ports:
+        - name: grafana
+          containerPort: 3000
+        resources:
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+          requests: 
+            memory: 500M
+            cpu: "500m"
+        volumeMounts:
+          - mountPath: /var/lib/grafana
+            name: grafana-storage
+          - mountPath: /etc/grafana/provisioning/datasources
+            name: grafana-datasources
+            readOnly: false
+          - mountPath: /grafana-dashboard-definitions/0/kube-nodes
+            name: kube-nodes
+            readOnly: false
+          - mountPath: /grafana-dashboard-definitions/0/node-exporter
+            name: node-exporter
+            readOnly: false
+          - mountPath: /grafana-dashboard-definitions/0/kubernetes-overview
+            name: kubernetes-overview
+            readOnly: false
+          - mountPath: /grafana-dashboard-definitions/0/k8s-views-global
+            name: k8s-views-global
+            readOnly: false
+          - mountPath: /etc/grafana/provisioning/dashboards
+            name: grafana-dashboards
+            readOnly: false
+      volumes:
+        - name: grafana-storage
+          emptyDir: {}
+        - name: grafana-dashboards 
+          configMap:
+            name: grafana-dashboards
+        - name: grafana-datasources
+          configMap:
+              defaultMode: 420
+              name: grafana-datasources
+        - name: k8s-views-global
+          configMap:
+              defaultMode: 420
+              name: k8s-views-global
+        - name: kubernetes-overview
+          configMap:
+              defaultMode: 420
+              name: kubernetes-overview
+        - name: kube-nodes
+          configMap:
+              defaultMode: 420
+              name: kube-nodes
+        - name: node-exporter
+          configMap:
+              defaultMode: 420
+              name: node-exporter

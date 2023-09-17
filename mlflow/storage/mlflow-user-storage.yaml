@@ -1,0 +1,60 @@
+# TODO: Add task to namespaces from env. Use envsubst
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-storage-pvc
+  namespace: kubeflow-user-example-com
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mlflow-storage-pv
+  namespace: kubeflow-user-example-com
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: 10.0.71.50
+    path: /mlflow/storage
+  claimRef:
+    name: mlflow-storage-pvc
+    namespace: kubeflow-user-example-com
+--- # ARTIFACT
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifact-pvc
+  namespace: kubeflow-user-example-com
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mlflow-artifact-pv
+  namespace: kubeflow-user-example-com
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: 10.0.71.50
+    path: /mlflow/artifact
+  claimRef:
+    name: mlflow-artifact-pvc
+    namespace: kubeflow-user-example-com

@@ -1,0 +1,178 @@
+- hosts: all
+  become: yes # sudo
+  tasks:
+    - name: Update apt packages
+      apt:
+        update_cache: yes
+    
+    - name: Install dependencies
+      apt:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - apt-transport-https
+          - curl
+          - ca-certificates
+          - software-properties-common
+
+    - name: Remove swapfile from /etc/fstab
+      mount:
+        name: "{{ item }}"
+        fstype: swap
+        state: absent
+      with_items:
+        - swap
+        - none
+
+    - name: Disable swap
+      command: swapoff -a
+      when: ansible_swaptotal_mb > 0
+
+    - name: Create an empty file for the Containerd module
+      copy:
+        content: ""
+        dest: /etc/modules-load.d/containerd.conf
+        force: no
+
+    - name: Configure modules for Containerd
+      blockinfile:
+        path: /etc/modules-load.d/containerd.conf
+        block: |
+          overlay
+          br_netfilter
+
+# CONFIGURE NETWORK SETTINGS
+    - name: Create k8s.conf if not exists
+      file:
+        path: /etc/modules-load.d/k8s.conf
+        state: touch  # Create an empty file if it doesn't exist
+      ignore_errors: yes  # Ignore errors if the file already exists
+
+    - name: Load kernel modules
+      lineinfile:
+        path: /etc/modules-load.d/k8s.conf
+        line: "{{ item }}"
+      with_items:
+        - overlay # Container file system 
+        - br_netfilter # Enhance network filtering capabilities
+
+    - name: Modprobe kernel modules
+      modprobe:
+        name: "{{ item }}"
+      with_items:
+        - overlay
+        - br_netfilter
+
+    - name: Create sysctl/k8s.conf if not exists
+      file:
+        path: /etc/sysctl.d/k8s.conf
+        state: touch  # Create an empty file if it doesn't exist
+      ignore_errors: yes  # Ignore errors if the file already exists
+
+    - name: Set sysctl parameters
+      lineinfile:
+        path: /etc/sysctl.d/k8s.conf
+        line: "{{ item.key }} = {{ item.value }}"
+      with_items:
+        - { key: "net.bridge.bridge-nf-call-iptables", value: "1" }
+        - { key: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+        - { key: "net.ipv4.ip_forward", value: "1" }
+
+    - name: Set bridge-nf-call-iptables
+      sysctl:
+        name: net.bridge.bridge-nf-call-iptables
+        value: 1
+
+    - name: Set ip_forward
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: 1
+
+    - name: Apply sysctl params
+      command: sysctl --system
+
+    - name: Create keyrings directory if not exists
+      file:
+        path: /etc/apt//keyrings
+        state: directory
+
+# DOCKER REPO
+    - name: Add Docker GPG key
+      shell: |
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg
+      register: gpg_output
+
+    - name: Get architecture
+      command: dpkg --print-architecture
+      register: architecture
+
+    - name: Get Ubuntu version codename
+      shell: . /etc/os-release && echo $VERSION_CODENAME
+      register: ubuntu_version_codename
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch={{ architecture.stdout }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ubuntu_version_codename.stdout }} stable"
+        state: present
+        filename: docker
+        
+# KUBERNETES REPO
+    - name: Add Kubernetes GPG key
+      shell: curl -k -fsSL https://dl.k8s.io/apt/doc/apt-key.gpg | sudo gpg --yes --dearmor -o /etc/apt/keyrings/kubernetes-archive-keyring.gpg # done with curl because of certificate problems.
+
+    - name: Add Kubernetes repository
+      apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main"
+        state: present
+
+# CONTAINERD SETUP
+    - name: install Containerd
+      apt:
+        name: containerd.io
+        state: present
+
+    - name: Create Containerd directory
+      file:
+        path: /etc/containerd
+        state: directory
+    
+    - name: Check if nvidia-smi is available
+      command: nvidia-smi
+      register: nvidia_smi_result
+      ignore_errors: yes
+
+  # CONTAINERD CONFIG TOML SETUP ACCORDING TO RESOURCE
+    - name: Configuring the systemd cgroup driver for Containerd
+      copy:
+        src: "{{ './containerd_configs/cpu.toml' if nvidia_smi_result.rc != 0 else './containerd_configs/gpu.toml' }}"
+        dest: /etc/containerd/config.toml 
+        force: yes # replace if exists.
+
+    - name: Enable the Containerd service and start it
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+        daemon-reload: yes
+
+#  KUBERNETES TOOLS
+    - name: Install Kubernetes binaries
+      apt:
+        name: "{{ packages }}"
+        state: present
+        update_cache: yes
+      vars:
+        packages:
+          - kubelet=1.27.4-00
+          - kubeadm=1.27.4-00
+          - kubectl=1.27.4-00
+
+    - name: Prevent kubernetes tools from being upgraded
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      with_items:
+        - kubelet
+        - kubeadm
+        - kubectl

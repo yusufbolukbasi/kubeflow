@@ -1,0 +1,13 @@
+[master]
+10.0.0.0 ansible_ssh_user=kubeflow ansible_ssh_pass=***
+
+[workers]
+10.0.0.0 ansible_ssh_user=aiserver ansible_ssh_pass=***
+10.0.0.0 ansible_ssh_user=aiserver2 ansible_ssh_pass=***
+
+[all:children]
+master
+workers
+
+[all:vars]
+ansible_connection=ssh

@@ -1,0 +1,40 @@
+- hosts: master
+  become: yes
+  tasks: 
+    - name: Get host ip of master
+      shell: "hostname -I | cut -f1 -d' '"
+      register: host_ip
+    
+    - name: Get hostname of master
+      shell: "hostname"
+      register: hostname
+
+    - name: Kubeadm Init
+      shell: kubeadm init --apiserver-advertise-address={{  host_ip.stdout  }} --node-name k8s-master --pod-network-cidr=10.244.0.0/24 --cri-socket=unix:///var/run/containerd/containerd.sock
+    
+    - name: Setup kubeconfig with default user
+      command: "{{ item }}"
+      with_items:
+        - mkdir -p /home/{{  hostname.stdout  }}/.kube
+        - cp -i /etc/kubernetes/admin.conf /home/{{  hostname.stdout  }}/.kube/config
+        - sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+    - name: Add environment variable to .bashrc
+      lineinfile:
+        path: "{{ ansible_env.HOME }}/.bashrc"
+        line: "export KUBECONFIG=$HOME/.kube/config"
+        state: present
+
+    - name: Source bashrc 
+      shell: source {{ ansible_env.HOME }}/.bashrc
+
+    - name: Generate join command
+      command: kubeadm token create --print-join-command
+      register: join_command
+
+    - name: Copy join command to local file
+      local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./join-command"
+
+    - name: Create pod network
+      become: false
+      command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml

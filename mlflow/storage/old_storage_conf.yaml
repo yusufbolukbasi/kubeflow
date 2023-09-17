@@ -1,0 +1,83 @@
+# BACKEND STORAGE
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-backend-claim
+  namespace: mlflow
+spec:
+  storageClassName: local-storage
+  resources:
+    requests:
+      storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: storage-pv
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  local:
+    path: /mlflow/storage
+  claimRef:
+    name: mlflow-backend-claim
+    namespace: mlflow
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - kubeflow
+# ARTIFACT STORAGE
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifact-claim
+  namespace: mlflow
+spec:
+  storageClassName: local-storage
+  resources:
+    requests:
+      storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: artifact-pv
+
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  local:
+    path: /mlflow/artifact
+  claimRef:
+    name: mlflow-artifact-claim
+    namespace: mlflow
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - kubeflow

@@ -1,0 +1,50 @@
+- hosts: workers
+  become: yes
+  tasks:
+    - name: Check if nvidia-smi is available
+      command: nvidia-smi
+      register: nvidia_smi_installed
+      ignore_errors: yes 
+
+    - name: Check if nvidia-container-toolkit is installed
+      shell: dpkg -l | grep nvidia-container-toolkit
+      register: nvidia_ctk_installed
+      ignore_errors: yes
+
+    - name: Install nvidia-container-runtime to use gpu(s)
+      block:
+        - name: Get distribution information
+          shell: |
+            distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
+            echo $distribution
+          register: distribution_output
+
+        - name: Add NVIDIA container toolkit GPG key
+          shell: |
+            curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --yes --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+        - name: Add NVIDIA container toolkit repository
+          shell: |
+            distribution={{ distribution_output.stdout }}
+            curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list |
+              sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' |
+              sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+        
+        - name: Update apt packages
+          apt:
+            update_cache: yes
+        
+        - name: Install nvidia-container-runtime
+          apt:
+            name: nvidia-container-runtime
+            state: present
+            update_cache: yes
+      when: 
+        - nvidia_smi_installed.rc == 0 # nvidia-smi available
+        - nvidia_ctk_installed.stdout_lines|length < 1  # container runtime not installed
+
+    - name: Copy the join command to server location
+      copy: src=join-command dest=/tmp/join-command.sh mode=0777
+
+    - name: Join the node to cluster
+      command: /bin/bash /tmp/join-command.sh
